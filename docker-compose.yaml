@@ -1,0 +1,82 @@
+services:
+  redis-cluster-1:
+    image: redis:7.0
+    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    ports:
+      - "7001:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "cluster", "info"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  redis-cluster-2:
+    image: redis:7.0
+    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    ports:
+      - "7002:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "cluster", "info"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  redis-cluster-3:
+    image: redis:7.0
+    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    ports:
+      - "7003:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "cluster", "info"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  redis-cluster-4:
+    image: redis:7.0
+    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    ports:
+      - "7004:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "cluster", "info"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  redis-cluster-5:
+    image: redis:7.0
+    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    ports:
+      - "7005:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "cluster", "info"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  redis-cluster-6:
+    image: redis:7.0
+    command: redis-server --port 6379 --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes
+    ports:
+      - "7006:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "cluster", "info"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+  redis-cluster-creator:
+    image: redis:7.0
+    entrypoint:
+      [
+        /bin/sh,
+        -c,
+        'echo "yes" | redis-cli --cluster create redis-cluster-1:6379 redis-cluster-2:6379 redis-cluster-3:6379 redis-cluster-4:6379 redis-cluster-5:6379 redis-cluster-6:6379 --cluster-replicas 1',
+      ]
+    depends_on:
+      redis-cluster-1:
+        condition: service_healthy
+      redis-cluster-2:
+        condition: service_healthy
+      redis-cluster-3:
+        condition: service_healthy
+      redis-cluster-4:
+        condition: service_healthy
+      redis-cluster-5:
+        condition: service_healthy
+      redis-cluster-6:
+        condition: service_healthy
