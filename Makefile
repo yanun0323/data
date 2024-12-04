@@ -10,9 +10,12 @@ proto.install:
 release:
 	@if [ ! -f VERSION ]; then \
 		echo "Error: VERSION file not found"; \
-		exit 1; \
-	fi
-	@VERSION=$$(cat VERSION); \
+	else \
+		VERSION=$$(cat VERSION); \
+	fi; \
+	if [ -z "$$VERSION" ]; then \
+		VERSION="v0.0.0"; \
+	fi; \
 	if ! echo "$$VERSION" | grep -E "^v[0-9]+\.[0-9]+\.[0-9]+$$" > /dev/null; then \
 		echo "Error: Version format must be vX.X.X"; \
 		exit 1; \
@@ -22,6 +25,9 @@ release:
 		PATCH=$$(echo "$$VERSION" | cut -d. -f3) && \
 		NEW_PATCH=$$((PATCH + 1)) && \
 		NEW_VERSION="$$MAJOR.$$MINOR.$$NEW_PATCH" && \
+		rm -f ./VERSION &&\
+		echo "$$NEW_VERSION" > ./VERSION &&\
+		echo "release version $$NEW_VERSION"; \
 		git add . && \
 		git commit -m "release version $$NEW_VERSION" && \
 		git tag -a "$$NEW_VERSION" -m "version $$NEW_VERSION" && \
