@@ -1,6 +1,7 @@
 # @prefix release
 # @description 
 
+
 release:
 	@if [ ! -f VERSION ]; then \
 		echo "Error: VERSION file not found"; \
