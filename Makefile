@@ -40,6 +40,17 @@ release:
 #  migration  #
 ###############
 
+migrate.env:
+	@if [ ! -f Makefile.env ]; then \
+		echo "MYSQL_SQL_PATH=./database/migration" > ./Makefile.env &&\
+		echo "" >> ./Makefile.env &&\
+		echo "DB_USER=root" >> ./Makefile.env &&\
+		echo "DB_PASSWORD=root" >> ./Makefile.env &&\
+		echo "DB_HOST=localhost" >> ./Makefile.env &&\
+		echo "DB_PORT=3306" >> ./Makefile.env &&\
+		echo "DB_NAME=database" >> ./Makefile.env; \
+	fi
+
 migrate.new:
 	goose sqlite -dir=${MYSQL_SQL_PATH} . create . sql
 
