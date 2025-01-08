@@ -11,7 +11,7 @@ services:
       - ./.redis/node1:/data
     networks:
       redis-cluster:
-        ipv4_address: 172.20.0.11
+        ipv4_address: 192.168.100.11
 
   redis-node-2:
     image: redis:7.0
@@ -23,7 +23,7 @@ services:
       - ./.redis/node2:/data
     networks:
       redis-cluster:
-        ipv4_address: 172.20.0.12
+        ipv4_address: 192.168.100.12
 
   redis-node-3:
     image: redis:7.0
@@ -35,7 +35,7 @@ services:
       - ./.redis/node3:/data
     networks:
       redis-cluster:
-        ipv4_address: 172.20.0.13
+        ipv4_address: 192.168.100.13
 
   redis-node-4:
     image: redis:7.0
@@ -47,7 +47,7 @@ services:
       - ./.redis/node4:/data
     networks:
       redis-cluster:
-        ipv4_address: 172.20.0.14
+        ipv4_address: 192.168.100.14
 
   redis-node-5:
     image: redis:7.0
@@ -59,7 +59,7 @@ services:
       - ./.redis/node5:/data
     networks:
       redis-cluster:
-        ipv4_address: 172.20.0.15
+        ipv4_address: 192.168.100.15
 
   redis-node-6:
     image: redis:7.0
@@ -71,11 +71,11 @@ services:
       - ./.redis/node6:/data
     networks:
       redis-cluster:
-        ipv4_address: 172.20.0.16
+        ipv4_address: 192.168.100.16
 
   redis-cluster-init:
     image: redis:7.0
-    command: redis-cli --cluster create 172.20.0.11:7001 172.20.0.12:7002 172.20.0.13:7003 172.20.0.14:7004 172.20.0.15:7005 172.20.0.16:7006 --cluster-replicas 1 --cluster-yes
+    command: redis-cli --cluster create 192.168.100.11:7001 192.168.100.12:7002 192.168.100.13:7003 192.168.100.14:7004 192.168.100.15:7005 192.168.100.16:7006 --cluster-replicas 1 --cluster-yes
     depends_on:
       - redis-node-1
       - redis-node-2
@@ -85,7 +85,7 @@ services:
       - redis-node-6
     networks:
       redis-cluster:
-        ipv4_address: 172.20.0.17
+        ipv4_address: 192.168.100.17
 
 networks:
   redis-cluster:
@@ -93,4 +93,4 @@ networks:
     ipam:
       driver: default
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: 192.168.100.0/24
