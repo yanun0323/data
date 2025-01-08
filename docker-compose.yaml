@@ -8,7 +8,7 @@ services:
       - "7001:7001"
       - "17001:17001"
     volumes:
-      - ./redis/node1:/data
+      - ./.redis/node1:/data
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.11
@@ -20,7 +20,7 @@ services:
       - "7002:7002"
       - "17002:17002"
     volumes:
-      - ./redis/node2:/data
+      - ./.redis/node2:/data
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.12
@@ -32,7 +32,7 @@ services:
       - "7003:7003"
       - "17003:17003"
     volumes:
-      - ./redis/node3:/data
+      - ./.redis/node3:/data
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.13
@@ -44,7 +44,7 @@ services:
       - "7004:7004"
       - "17004:17004"
     volumes:
-      - ./redis/node4:/data
+      - ./.redis/node4:/data
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.14
@@ -56,7 +56,7 @@ services:
       - "7005:7005"
       - "17005:17005"
     volumes:
-      - ./redis/node5:/data
+      - ./.redis/node5:/data
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.15
@@ -68,7 +68,7 @@ services:
       - "7006:7006"
       - "17006:17006"
     volumes:
-      - ./redis/node6:/data
+      - ./.redis/node6:/data
     networks:
       redis-cluster:
         ipv4_address: 172.20.0.16
