@@ -1,5 +1,11 @@
 .PHONY:
 
+up:
+	docker-compose up -d
+
+down:
+	docker-compose down
+
 proto.install:
 	sudo chmod -R 777 ./protoc &&\
 	sudo rm -rf /usr/local/bin/protoc &&\
