@@ -72,28 +72,4 @@ sequenceDiagram
 
     Gor ->>- Lock: 釋放交易對鎖
     note over Gor: 完成
-
-```
-
-### 對沖邏輯
-
-```mermaid
-%%{
-    init: {
-        'markdownAutoWrap': false,
-        'flowchart': {
-            'wrappingWidth': 1000,
-        }
-    }
-}%%
-
-sequenceDiagram
-    autonumber
-    actor A as main
-    participant DB as 資料庫
-
-    A->>+B: Hello John, how are you?
-    A->>+B: John, can you hear me?
-    B-->>-A: Hi Alice, I can hear you!
-    B-->>-A: I feel great!
 ```
