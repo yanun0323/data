@@ -1,0 +1,301 @@
+package main
+
+import (
+	"fmt"
+	"log"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/gorilla/websocket"
+)
+
+type WSClient struct {
+	url            string
+	conn           *websocket.Conn
+	mu             sync.Mutex
+	isConnected    bool
+	reconnectChan  chan struct{}
+	stopChan       chan struct{}
+	messageHandler func([]byte)
+	running        atomic.Bool    // 使用原子操作確保安全檢查
+	wg             sync.WaitGroup // 用於等待 goroutine 完成
+}
+
+func NewWSClient(url string, messageHandler func([]byte)) *WSClient {
+	return &WSClient{
+		url:            url,
+		isConnected:    false,
+		reconnectChan:  make(chan struct{}, 1),
+		stopChan:       make(chan struct{}),
+		messageHandler: messageHandler,
+	}
+}
+
+func (c *WSClient) Start() bool {
+	// 如果已經在運行，則不重複啟動
+	if c.running.Swap(true) {
+		log.Println("WebSocket client 已經在運行中")
+		return false
+	}
+
+	// 重置 stopChan (如果之前被關閉)
+	select {
+	case <-c.stopChan:
+		c.stopChan = make(chan struct{})
+	default:
+	}
+
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.reconnectLoop()
+	}()
+
+	// 觸發第一次連接
+	c.reconnectChan <- struct{}{}
+	return true
+}
+
+func (c *WSClient) Stop() {
+	// 如果沒有運行，則直接返回
+	if !c.running.CompareAndSwap(true, false) {
+		return
+	}
+
+	log.Println("正在停止 WebSocket client...")
+	close(c.stopChan)
+	c.disconnect()
+
+	// 等待 reconnectLoop goroutine 完成
+	c.wg.Wait()
+	log.Println("WebSocket client 已停止")
+}
+
+func (c *WSClient) reconnectLoop() {
+	backoff := 1 * time.Second
+	maxBackoff := 60 * time.Second
+
+	for {
+		select {
+		case <-c.stopChan:
+			return
+		case <-c.reconnectChan:
+			if c.isConnected {
+				continue
+			}
+
+			err := c.connect()
+			if err != nil {
+				log.Printf("連接失敗: %v, 將在 %v 後重試", err, backoff)
+
+				// 使用帶有超時的 select，以便能夠響應停止信號
+				select {
+				case <-time.After(backoff):
+				case <-c.stopChan:
+					return
+				}
+
+				backoff = time.Duration(min(backoff.Seconds()*2, maxBackoff.Seconds())) * time.Second
+
+				// 檢查是否已停止
+				select {
+				case <-c.stopChan:
+					return
+				default:
+					c.reconnectChan <- struct{}{}
+				}
+			} else {
+				backoff = 1 * time.Second // 重置退避時間
+			}
+		}
+	}
+}
+
+func (c *WSClient) connect() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.isConnected {
+		return nil
+	}
+
+	dialer := websocket.DefaultDialer
+	dialer.HandshakeTimeout = 10 * time.Second
+
+	conn, _, err := dialer.Dial(c.url, nil)
+	if err != nil {
+		return err
+	}
+
+	c.conn = conn
+	c.isConnected = true
+
+	// 設置 ping 處理
+	c.conn.SetPingHandler(func(data string) error {
+		c.conn.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(5*time.Second))
+		return nil
+	})
+
+	// 設置關閉處理
+	c.conn.SetCloseHandler(func(code int, text string) error {
+		log.Printf("連接關閉: %d %s", code, text)
+		c.triggerReconnect()
+		return nil
+	})
+
+	// 啟動讀取循環
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.readLoop()
+	}()
+
+	// 啟動心跳檢測
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.heartbeat()
+	}()
+
+	log.Println("WebSocket 連接成功")
+	return nil
+}
+
+func (c *WSClient) disconnect() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.isConnected {
+		return
+	}
+
+	// 嘗試發送關閉消息，但設置較短的超時
+	c.conn.SetWriteDeadline(time.Now().Add(1 * time.Second))
+	c.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
+	c.conn.Close()
+	c.isConnected = false
+	c.conn = nil
+}
+
+func (c *WSClient) readLoop() {
+	for {
+		// 檢查是否已停止
+		select {
+		case <-c.stopChan:
+			return
+		default:
+		}
+
+		c.mu.Lock()
+		conn := c.conn
+		c.mu.Unlock()
+
+		if conn == nil {
+			return
+		}
+
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			// 檢查是否是因為客戶端停止而關閉
+			select {
+			case <-c.stopChan:
+				return
+			default:
+				log.Printf("讀取錯誤: %v", err)
+				c.triggerReconnect()
+				return
+			}
+		}
+
+		if c.messageHandler != nil {
+			c.messageHandler(message)
+		}
+	}
+}
+
+func (c *WSClient) heartbeat() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.stopChan:
+			return
+		case <-ticker.C:
+			c.mu.Lock()
+			if !c.isConnected || c.conn == nil {
+				c.mu.Unlock()
+				return
+			}
+
+			err := c.conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(5*time.Second))
+			c.mu.Unlock()
+
+			if err != nil {
+				log.Printf("心跳檢測失敗: %v", err)
+				c.triggerReconnect()
+				return
+			}
+		}
+	}
+}
+
+func (c *WSClient) triggerReconnect() {
+	// 檢查是否已停止
+	select {
+	case <-c.stopChan:
+		return
+	default:
+	}
+
+	c.mu.Lock()
+	if c.isConnected {
+		c.isConnected = false
+		if c.conn != nil {
+			c.conn.Close()
+			c.conn = nil
+		}
+	}
+	c.mu.Unlock()
+
+	// 非阻塞方式觸發重連
+	select {
+	case c.reconnectChan <- struct{}{}:
+	default:
+	}
+}
+
+// 發送消息的方法
+func (c *WSClient) SendMessage(message []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.isConnected || c.conn == nil {
+		return fmt.Errorf("連接已斷開")
+	}
+
+	return c.conn.WriteMessage(websocket.TextMessage, message)
+}
+
+func min(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// 使用示例
+func main() {
+	client := NewWSClient("wss://example.com/ws", func(msg []byte) {
+		log.Printf("收到消息: %s", string(msg))
+	})
+
+	client.Start()
+
+	// 程序運行中...
+	time.Sleep(5 * time.Minute)
+
+	// 當需要關閉時
+	client.Stop()
+}
