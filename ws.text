@@ -1,14 +1,26 @@
 package main
 
 import (
-	"fmt"
-	"log"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/yanun0323/pkg/logs"
 )
+
+var (
+	ErrWebSocketConnectionClosed = errors.New("websocket is closed")
+)
+
+type Client interface {
+	Close() error
+	ReadJSON(v interface{}) error
+	ReadMessage() (messageType int, p []byte, err error)
+	WriteJSON(v interface{}) error
+	WriteMessage(messageType int, data []byte) error
+}
 
 type WSClient struct {
 	url            string
@@ -22,7 +34,7 @@ type WSClient struct {
 	wg             sync.WaitGroup // 用於等待 goroutine 完成
 }
 
-func NewWSClient(url string, messageHandler func([]byte)) *WSClient {
+func NewWSClient(url string, messageHandler func([]byte)) Client {
 	return &WSClient{
 		url:            url,
 		isConnected:    false,
@@ -35,7 +47,7 @@ func NewWSClient(url string, messageHandler func([]byte)) *WSClient {
 func (c *WSClient) Start() bool {
 	// 如果已經在運行，則不重複啟動
 	if c.running.Swap(true) {
-		log.Println("WebSocket client 已經在運行中")
+		logs.Debug("WebSocket client 已經在運行中")
 		return false
 	}
 
@@ -57,19 +69,20 @@ func (c *WSClient) Start() bool {
 	return true
 }
 
-func (c *WSClient) Stop() {
+func (c *WSClient) Close() error {
 	// 如果沒有運行，則直接返回
 	if !c.running.CompareAndSwap(true, false) {
-		return
+		return nil
 	}
 
-	log.Println("正在停止 WebSocket client...")
+	logs.Debug("正在停止 WebSocket client...")
 	close(c.stopChan)
 	c.disconnect()
 
 	// 等待 reconnectLoop goroutine 完成
 	c.wg.Wait()
-	log.Println("WebSocket client 已停止")
+	logs.Debug("WebSocket client 已停止")
+	return nil
 }
 
 func (c *WSClient) reconnectLoop() {
@@ -87,7 +100,7 @@ func (c *WSClient) reconnectLoop() {
 
 			err := c.connect()
 			if err != nil {
-				log.Printf("連接失敗: %v, 將在 %v 後重試", err, backoff)
+				logs.Debug("連接失敗: %v, 將在 %v 後重試", err, backoff)
 
 				// 使用帶有超時的 select，以便能夠響應停止信號
 				select {
@@ -139,7 +152,7 @@ func (c *WSClient) connect() error {
 
 	// 設置關閉處理
 	c.conn.SetCloseHandler(func(code int, text string) error {
-		log.Printf("連接關閉: %d %s", code, text)
+		logs.Debug("連接關閉: %d %s", code, text)
 		c.triggerReconnect()
 		return nil
 	})
@@ -158,7 +171,7 @@ func (c *WSClient) connect() error {
 		c.heartbeat()
 	}()
 
-	log.Println("WebSocket 連接成功")
+	logs.Debug("WebSocket 連接成功")
 	return nil
 }
 
@@ -202,7 +215,7 @@ func (c *WSClient) readLoop() {
 			case <-c.stopChan:
 				return
 			default:
-				log.Printf("讀取錯誤: %v", err)
+				logs.Debug("讀取錯誤: %v", err)
 				c.triggerReconnect()
 				return
 			}
@@ -233,7 +246,7 @@ func (c *WSClient) heartbeat() {
 			c.mu.Unlock()
 
 			if err != nil {
-				log.Printf("心跳檢測失敗: %v", err)
+				logs.Debug("心跳檢測失敗: %v", err)
 				c.triggerReconnect()
 				return
 			}
@@ -272,30 +285,69 @@ func (c *WSClient) SendMessage(message []byte) error {
 	defer c.mu.Unlock()
 
 	if !c.isConnected || c.conn == nil {
-		return fmt.Errorf("連接已斷開")
+		return ErrWebSocketConnectionClosed
 	}
 
 	return c.conn.WriteMessage(websocket.TextMessage, message)
 }
 
-func min(a, b float64) float64 {
-	if a < b {
-		return a
+func (c *WSClient) ReadJSON(v interface{}) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.isConnected || c.conn == nil {
+		return ErrWebSocketConnectionClosed
 	}
-	return b
+
+	return c.conn.ReadJSON(v)
+}
+
+func (c *WSClient) ReadMessage() (messageType int, p []byte, err error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.isConnected || c.conn == nil {
+		return 0, nil, ErrWebSocketConnectionClosed
+	}
+
+	return c.conn.ReadMessage()
+}
+
+func (c *WSClient) WriteJSON(v interface{}) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.isConnected || c.conn == nil {
+		return ErrWebSocketConnectionClosed
+	}
+
+	return c.conn.WriteJSON(v)
+}
+
+func (c *WSClient) WriteMessage(messageType int, data []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.isConnected || c.conn == nil {
+		return ErrWebSocketConnectionClosed
+	}
+
+	return c.conn.WriteMessage(messageType, data)
 }
 
 // 使用示例
 func main() {
 	client := NewWSClient("wss://example.com/ws", func(msg []byte) {
-		log.Printf("收到消息: %s", string(msg))
+		logs.Debug("收到消息: %s", string(msg))
 	})
 
-	client.Start()
+	// 轉型為 *WSClient 後啟動
+	wsClient := client.(*WSClient)
+	wsClient.Start()
 
 	// 程序運行中...
 	time.Sleep(5 * time.Minute)
 
 	// 當需要關閉時
-	client.Stop()
+	wsClient.Close()
 }
